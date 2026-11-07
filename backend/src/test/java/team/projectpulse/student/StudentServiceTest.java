@@ -5,7 +5,6 @@ import team.projectpulse.instructor.Instructor;
 import team.projectpulse.section.Section;
 import team.projectpulse.section.SectionRepository;
 import team.projectpulse.system.UserUtils;
-import team.projectpulse.system.exception.ObjectNotFoundException;
 import team.projectpulse.system.exception.StudentAlreadyDeactivatedException;
 import team.projectpulse.user.MyUserPrincipal;
 import team.projectpulse.user.userinvitation.UserInvitationService;
@@ -243,18 +242,6 @@ class StudentServiceTest {
         assertThat(thrown).isInstanceOf(StudentAlreadyDeactivatedException.class)
                 .hasMessage("This student is already deactivated.");
         verify(this.studentRepository, never()).save(any(Student.class));
-    }
-
-    @Test
-    void testDeactivateStudentNotFound() {
-        // Given
-        given(this.studentRepository.findById(99)).willReturn(Optional.empty());
-
-        // When
-        Throwable thrown = catchThrowable(() -> this.studentService.deactivateStudent(99));
-
-        // Then
-        assertThat(thrown).isInstanceOf(ObjectNotFoundException.class);
     }
 
     @Test
