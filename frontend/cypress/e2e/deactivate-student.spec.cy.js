@@ -1,5 +1,5 @@
 // UC-STU-deactivate-student: the Deactivate action on the student's details page, and the Edit dialog's Status
-// switch. The student API is stubbed, so these tests check what the page shows and sends; the backend's own tests
+// switch. The first two blocks stub the student API, so they check what the page shows and sends; the backend's own tests
 // cover who may deactivate and what deactivation changes. Run against the dev stack (backend + `npm run dev`) with
 // `npm run cy:open`.
 
@@ -120,5 +120,62 @@ describe("The Edit dialog's Status switch", () => {
   it('is shown for a deactivated student, as the interim reactivate path', () => {
     cy.contains('tr', 'Hudson').find('button').click()
     cy.get('[data-cy=student-status-switch]').should('be.visible')
+  })
+})
+
+// Against the real backend: nothing is stubbed, so this checks what the server ends up storing. Tracy Nicholson
+// (section 2, no team) is used by no other spec; the test deactivates her and afterEach puts her back.
+describe('An Edit dialog opened before the student was deactivated', () => {
+  const api = 'http://localhost/api/v1'
+  const tracy = { username: 't.nicholson@abc.edu', firstName: 'Tracy', lastName: 'Nicholson', email: 't.nicholson@abc.edu' }
+  let tracyId
+  let token
+
+  beforeEach(() => {
+    cy.login('b.gates@abc.edu', '123456')
+    cy.window().then((win) => {
+      token = JSON.parse(win.localStorage.getItem('token')).token
+    })
+    cy.intercept('POST', '**/api/v1/students/search*').as('search') // A spy: the real search answers
+    cy.visit('/students')
+    cy.wait('@search').then(({ response }) => {
+      tracyId = response.body.data.content.find((s) => s.lastName === 'Nicholson').id
+    })
+  })
+
+  afterEach(() => {
+    if (tracyId == null) return
+    cy.request({
+      method: 'PUT',
+      url: `${api}/students/${tracyId}`,
+      headers: { Authorization: `Bearer ${token}` },
+      body: { id: tracyId, ...tracy, enabled: true }
+    })
+  })
+
+  it('saves the edit without reactivating her', () => {
+    cy.contains('tr', 'Nicholson').find('button').click()
+    cy.contains('.el-dialog .el-form-item', 'Last Name:').find('input').should('have.value', 'Nicholson')
+
+    // Another instructor deactivates her while the dialog is open
+    cy.then(() =>
+      cy.request({
+        method: 'POST',
+        url: `${api}/students/${tracyId}/deactivation`,
+        headers: { Authorization: `Bearer ${token}` }
+      })
+    )
+
+    cy.intercept('PUT', '**/api/v1/students/*').as('update') // A spy
+    cy.contains('.el-dialog .el-form-item', 'Last Name:').find('input').clear().type('Nicholsen')
+    cy.contains('.el-dialog button', 'Confirm').click()
+    cy.wait('@update')
+
+    cy.then(() =>
+      cy.request({ url: `${api}/students/${tracyId}`, headers: { Authorization: `Bearer ${token}` } })
+    ).then(({ body }) => {
+      expect(body.data.lastName).to.eq('Nicholsen')
+      expect(body.data.enabled, 'still deactivated').to.eq(false)
+    })
   })
 })

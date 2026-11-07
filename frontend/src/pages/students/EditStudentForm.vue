@@ -114,7 +114,10 @@ async function updateExistingStudent() {
   const updatedStudent: Student = {
     id: studentBeingEdited.value.id,
     username: studentBeingEdited.value.username,
-    enabled: studentBeingEdited.value.enabled,
+    // true only when the user turned the switch on for a student deactivated when the dialog opened (the interim
+    // reactivate path). Otherwise false, which the backend ignores for an active student, so a dialog left open
+    // while someone else deactivates the student cannot undo that.
+    enabled: loadedAsDeactivated.value && studentBeingEdited.value.enabled,
     firstName: studentBeingEdited.value.firstName,
     lastName: studentBeingEdited.value.lastName,
     email: studentBeingEdited.value.email
