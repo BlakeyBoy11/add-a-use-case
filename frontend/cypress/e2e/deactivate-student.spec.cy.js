@@ -30,7 +30,7 @@ describe('Deactivate a student', () => {
   beforeEach(() => {
     current = { ...john }
     cy.login('b.gates@abc.edu', '123456')
-    cy.intercept('GET', '**/students/4', (req) => req.reply(found(current))).as('student')
+    cy.intercept('GET', '**/api/v1/students/4', (req) => req.reply(found(current))).as('student')
   })
 
   function openDetails() {
@@ -39,7 +39,7 @@ describe('Deactivate a student', () => {
   }
 
   it('warns with every consequence, then deactivates on Confirm (steps 4-6)', () => {
-    cy.intercept('POST', '**/students/4/deactivation', (req) => {
+    cy.intercept('POST', '**/api/v1/students/4/deactivation', (req) => {
       current = { ...john, enabled: false }
       req.reply({ flag: true, code: 200, message: 'Deactivate student successfully', data: current })
     }).as('deactivate')
@@ -50,6 +50,7 @@ describe('Deactivate a student', () => {
     cy.get('.el-message-box__message').should('have.text', warning)
     cy.get('.deactivate-confirm').should('contain', 'Confirm')
     cy.get('.deactivate-cancel').should('contain', 'Cancel')
+    cy.screenshot('deactivate-student-confirmation', { capture: 'viewport' }) // Evidence for the pull request
     cy.get('.deactivate-confirm').click()
 
     cy.wait('@deactivate')
@@ -60,7 +61,7 @@ describe('Deactivate a student', () => {
   })
 
   it('sends no request when the user cancels at the warning (5a)', () => {
-    cy.intercept('POST', '**/students/4/deactivation', { statusCode: 500 }).as('deactivate')
+    cy.intercept('POST', '**/api/v1/students/4/deactivation', { statusCode: 500 }).as('deactivate')
     openDetails()
 
     cy.get('[data-cy=student-deactivate]').click()
@@ -72,7 +73,7 @@ describe('Deactivate a student', () => {
   })
 
   it('re-fetches the student when she is already deactivated (6a)', () => {
-    cy.intercept('POST', '**/students/4/deactivation', (req) => {
+    cy.intercept('POST', '**/api/v1/students/4/deactivation', (req) => {
       current = { ...john, enabled: false } // Someone else deactivated her after the page loaded
       req.reply({ statusCode: 409, body: { flag: false, code: 409, message: 'This student is already deactivated.' } })
     }).as('deactivate')
@@ -101,11 +102,11 @@ describe("The Edit dialog's Status switch", () => {
 
   beforeEach(() => {
     cy.login('b.gates@abc.edu', '123456')
-    cy.intercept('POST', '**/students/search*', {
+    cy.intercept('POST', '**/api/v1/students/search*', {
       body: { flag: true, code: 200, message: 'Find students successfully', data: { content: [john, eric], totalElements: 2 } }
     }).as('search')
-    cy.intercept('GET', '**/students/4', { body: found(john) })
-    cy.intercept('GET', '**/students/5', { body: found(eric) })
+    cy.intercept('GET', '**/api/v1/students/4', { body: found(john) })
+    cy.intercept('GET', '**/api/v1/students/5', { body: found(eric) })
     cy.visit('/students')
     cy.wait('@search')
   })

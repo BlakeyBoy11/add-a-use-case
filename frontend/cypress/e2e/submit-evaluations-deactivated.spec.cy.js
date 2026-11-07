@@ -42,12 +42,12 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
 
   beforeEach(() => {
     cy.login('j.smith@abc.edu', '123456')
-    cy.intercept('GET', '**/sections/*', { body: ok({ sectionId: 2, rubricId: 1 }) })
-    cy.intercept('GET', '**/rubrics/1', { body: ok({ rubricId: 1, criteria }) })
-    cy.intercept('GET', '**/students/teams/1', (req) => req.reply(ok(team))).as('team')
-    cy.intercept('GET', '**/evaluations/evaluators/4/week/*', (req) => req.reply(ok(savedEvaluations))).as('saved')
-    cy.intercept('POST', '**/evaluations/weeks/*/receipt', { body: ok(null) }).as('receipt')
-    cy.intercept('PUT', '**/evaluations/*', (req) => req.reply(ok({ ...req.body }))).as('put')
+    cy.intercept('GET', '**/api/v1/sections/*', { body: ok({ sectionId: 2, rubricId: 1 }) })
+    cy.intercept('GET', '**/api/v1/rubrics/1', { body: ok({ rubricId: 1, criteria }) })
+    cy.intercept('GET', '**/api/v1/students/teams/1', (req) => req.reply(ok(team))).as('team')
+    cy.intercept('GET', '**/api/v1/evaluations/evaluators/4/week/*', (req) => req.reply(ok(savedEvaluations))).as('saved')
+    cy.intercept('POST', '**/api/v1/evaluations/weeks/*/receipt', { body: ok(null) }).as('receipt')
+    cy.intercept('PUT', '**/api/v1/evaluations/*', (req) => req.reply(ok({ ...req.body }))).as('put')
   })
 
   function openPage() {
@@ -80,7 +80,7 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     team = [teammate(4, 'John', 'Smith', true), teammate(5, 'Eric', 'Hudson', true), teammate(6, 'Jerry', 'Moon', true)]
     savedEvaluations = []
     let nextId = 20
-    cy.intercept('POST', '**/evaluations', (req) => {
+    cy.intercept('POST', '**/api/v1/evaluations', (req) => {
       if (req.body.evaluateeId === 6) {
         req.reply({
           statusCode: 400,
@@ -116,7 +116,7 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
   it('sends a PUT for a saved evaluation and a POST for an unsaved one in the same save (partial save)', () => {
     team = [teammate(4, 'John', 'Smith', true), teammate(5, 'Eric', 'Hudson', true)]
     savedEvaluations = [saved(11, 4, 'John Smith')]
-    cy.intercept('POST', '**/evaluations', (req) => req.reply(ok({ ...req.body, evaluationId: 30 }))).as('post')
+    cy.intercept('POST', '**/api/v1/evaluations', (req) => req.reply(ok({ ...req.body, evaluationId: 30 }))).as('post')
     openPage()
 
     cy.get('[data-cy=evaluations-submit]').click()
