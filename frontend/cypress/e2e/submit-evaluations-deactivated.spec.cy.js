@@ -74,6 +74,8 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     cy.get('@put.all').then((puts) => {
       expect(puts.map((p) => p.request.url.split('/').pop()).sort()).to.deep.equal(['11', '12'])
     })
+    cy.get('.el-message').should('contain', 'Peer evaluations updated successfully')
+    cy.get('@receipt.all').should('have.length', 0) // An Update sends no confirmation
   })
 
   it('sends every POST when one is rejected for a deactivated teammate, then reloads without her (9a)', () => {
@@ -124,5 +126,9 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     cy.wait('@put').its('request.url').should('match', /\/evaluations\/11$/)
     cy.wait('@post').its('request.body.evaluateeId').should('eq', 5)
     cy.get('.el-message').should('contain', 'Peer evaluations submitted successfully')
+    cy.wait('@receipt') // A Submit sends the confirmation
+    cy.get('[data-cy=evaluations-update]').click()
+    cy.wait(['@put', '@put'])
+    cy.get('@receipt.all').should('have.length', 1) // and the Update after it does not send another
   })
 })

@@ -242,7 +242,7 @@ async function prepareStartingPeerEvaluations() {
 async function savePeerEvaluations() {
   if (!peerEvalutions.value) return
   const evaluations = peerEvalutions.value
-  const isSubmission = evaluations.some((evaluation) => evaluation.evaluationId == null)
+  const isSubmission = isNewSubmission.value // The same rule that labels the button Submit or Update
 
   isLoading.value = true
   const results = await Promise.allSettled(
