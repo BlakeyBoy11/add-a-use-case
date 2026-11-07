@@ -214,27 +214,32 @@ async function prepareStartingPeerEvaluations() {
     result.data.map((evaluation) => [evaluation.evaluateeId, evaluation])
   )
 
-  // UC-EVA-submit-evaluation step 2: list each active teammate, and any teammate the student already evaluated
-  // this week. A teammate deactivated before she was evaluated is left out, since BR-no-evaluation-of-inactive
-  // rejects a new evaluation of her; one evaluated before she was deactivated stays, and stays editable.
-  peerEvalutions.value = students.value
-    .filter((student) => student.enabled || savedByEvaluateeId.has(student.id as number))
-    .map(
-      (student) =>
-        savedByEvaluateeId.get(student.id as number) ?? {
-          week: previousWeek.value,
-          evaluatorId: (userInfoStore.userInfo as Student).id as number,
-          evaluateeId: student.id as number,
-          evaluateeName: `${student.firstName} ${student.lastName}`,
-          ratings: criteria.value.map((criterion) => ({
-            criterionId: criterion.criterionId as number,
-            criterion: criterion.criterion,
-            actualScore: 10 // Default score, can be changed by the user
-          })),
-          publicComment: '',
-          privateComment: ''
-        }
-    )
+  // UC-EVA-submit-evaluation step 2: list each active teammate, and every evaluation the student already saved this
+  // week. A teammate deactivated before she was evaluated is left out, since BR-no-evaluation-of-inactive rejects a
+  // new evaluation of her. A saved evaluation stays, and stays editable (BR-evaluation-editable-until-close), even
+  // when its evaluatee has since been deactivated or moved off the team.
+  const teammateIds = new Set(students.value.map((student) => student.id as number))
+  peerEvalutions.value = [
+    ...students.value
+      .filter((student) => student.enabled || savedByEvaluateeId.has(student.id as number))
+      .map(
+        (student) =>
+          savedByEvaluateeId.get(student.id as number) ?? {
+            week: previousWeek.value,
+            evaluatorId: (userInfoStore.userInfo as Student).id as number,
+            evaluateeId: student.id as number,
+            evaluateeName: `${student.firstName} ${student.lastName}`,
+            ratings: criteria.value.map((criterion) => ({
+              criterionId: criterion.criterionId as number,
+              criterion: criterion.criterion,
+              actualScore: 10 // Default score, can be changed by the user
+            })),
+            publicComment: '',
+            privateComment: ''
+          }
+      ),
+    ...result.data.filter((evaluation) => !teammateIds.has(evaluation.evaluateeId))
+  ]
 }
 
 // Save peer evaluations: one request per listed teammate, a PUT for one already saved and a POST for one not yet,

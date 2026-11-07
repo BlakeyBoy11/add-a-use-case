@@ -78,6 +78,21 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     cy.get('@receipt.all').should('have.length', 0) // An Update sends no confirmation
   })
 
+  it('keeps listing a saved evaluation of someone moved off the team, and updates it (BR-evaluation-editable-until-close)', () => {
+    team = [teammate(4, 'John', 'Smith', true)]
+    savedEvaluations = [saved(11, 4, 'John Smith'), saved(13, 9, 'Woody Allen')] // Woody has since moved teams
+    openPage()
+
+    listed().should('have.length', 2)
+    cy.get('.el-table__body-wrapper').should('contain', 'Woody Allen')
+
+    cy.get('[data-cy=evaluations-update]').click()
+    cy.wait(['@put', '@put'])
+    cy.get('@put.all').then((puts) => {
+      expect(puts.map((p) => p.request.url.split('/').pop()).sort()).to.deep.equal(['11', '13'])
+    })
+  })
+
   it('sends every POST when one is rejected for a deactivated teammate, then reloads without her (9a)', () => {
     team = [teammate(4, 'John', 'Smith', true), teammate(5, 'Eric', 'Hudson', true), teammate(6, 'Jerry', 'Moon', true)]
     savedEvaluations = []
