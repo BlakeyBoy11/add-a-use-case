@@ -1473,6 +1473,16 @@ Details:
 7. Use case ends.
 
 **Extensions:**
+- **3a. The user is neither a course admin of the student's course nor an instructor assigned to the student's course section:**
+  - 3a1. The system denies the deactivation and makes no change to the student's account (BR-student-lifecycle).
+  - 3a2. Use case ends.
+- **5a. The user cancels at the warning:**
+  - 5a1. The system makes no change to the student's account.
+  - 5a2. Use case ends.
+- **6a. The student is already deactivated** (e.g., another course admin or instructor deactivated her after the user viewed her details):
+  - 6a1. The system informs the user that this student is already deactivated and makes no change.
+  - 6a2. Use case ends.
+
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
 **Business Rules:** BR-student-lifecycle, BR-no-evaluation-of-inactive
