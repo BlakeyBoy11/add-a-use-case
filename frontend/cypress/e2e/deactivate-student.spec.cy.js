@@ -88,6 +88,22 @@ describe('Deactivate a student', () => {
     cy.get('[data-cy=student-deactivate]').should('not.exist')
   })
 
+  it('disables Deactivate while the request is in flight, so it is sent once', () => {
+    cy.intercept('POST', '**/api/v1/students/4/deactivation', (req) => {
+      current = { ...john, enabled: false }
+      req.reply({ delay: 1500, body: { flag: true, code: 200, message: 'Deactivate student successfully', data: current } })
+    }).as('deactivate')
+    openDetails()
+
+    cy.get('[data-cy=student-deactivate]').click()
+    cy.get('.deactivate-confirm').click()
+    cy.get('[data-cy=student-deactivate]').should('be.disabled')
+
+    cy.wait('@deactivate')
+    cy.get('[data-cy=student-status]').should('have.text', 'Deactivated')
+    cy.get('@deactivate.all').should('have.length', 1)
+  })
+
   it('offers Deactivate only for an active student', () => {
     current = { ...john, enabled: false }
     openDetails()

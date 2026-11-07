@@ -10,6 +10,7 @@
         plain
         size="small"
         data-cy="student-deactivate"
+        :loading="deactivating"
         @click="confirmDeactivation"
       >
         Deactivate
@@ -36,6 +37,7 @@ const route = useRoute()
 
 const studentId: number = Number(route.params.studentId)
 const student = ref<Student>()
+const deactivating = ref(false) // A deactivation request is in flight, so the button cannot send a second one
 const studentName = computed(() =>
   student.value ? student.value.firstName + ' ' + student.value.lastName : ''
 )
@@ -49,7 +51,7 @@ onMounted(loadStudent)
 
 // UC-STU-deactivate-student steps 3-6. The warning names every consequence in the use case's Associated Information.
 async function confirmDeactivation() {
-  if (!student.value) return
+  if (!student.value || deactivating.value) return
   const { firstName, lastName } = student.value
   try {
     await ElMessageBox.confirm(
@@ -67,18 +69,21 @@ async function confirmDeactivation() {
     return // 5a: cancelled at the warning, so no request is sent
   }
 
+  // The button stays disabled until the page shows the outcome, which removes it
+  deactivating.value = true
   try {
     await deactivateStudent(studentId)
+    ElMessage.success('Student deactivated.')
+    await loadStudent()
   } catch (error) {
     // 6a: the shared request instance has already shown "This student is already deactivated."; re-fetch so the
     // page shows her as deactivated. Any other failure (a 403 has already routed away) is left to that instance.
     if (axios.isAxiosError(error) && error.response?.status === 409) {
       await loadStudent()
     }
-    return
+  } finally {
+    deactivating.value = false
   }
-  ElMessage.success('Student deactivated.')
-  await loadStudent()
 }
 </script>
 
