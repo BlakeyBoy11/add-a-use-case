@@ -6,6 +6,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import team.projectpulse.AbstractIntegrationTest;
 import team.projectpulse.evaluation.dto.PeerEvaluationDto;
 import team.projectpulse.evaluation.dto.RatingDto;
+import team.projectpulse.student.Student;
+import team.projectpulse.student.StudentRepository;
 import team.projectpulse.system.StatusCode;
 import org.hamcrest.Matchers;
 import org.json.JSONObject;
@@ -787,6 +789,101 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.flag").value(false))
                 .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
                 .andExpect(jsonPath("$.message").value("The ratings are not valid. Please make sure all criteria in the rubric are rated and each criterion is rated only once."));
+    }
+
+
+    // Deactivated students (BR-no-evaluation-of-inactive, docs/design/eva.md). Deactivation goes through the repository;
+    // the deactivation route is UC-STU-deactivate-student's. The class-level transaction rolls each change back.
+
+    @Autowired
+    StudentRepository studentRepository;
+
+    private void deactivate(Integer studentId) {
+        Student student = this.studentRepository.findById(studentId).orElseThrow();
+        student.setEnabled(false);
+        this.studentRepository.saveAndFlush(student);
+    }
+
+    private void fixClockOn(LocalDate date) {
+        Clock fixedClock = Clock.fixed(date.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+    }
+
+    private static List<RatingDto> sixRatings() {
+        return List.of(
+                new RatingDto(null, 1, 4.0),
+                new RatingDto(null, 2, 9.0),
+                new RatingDto(null, 3, 7.0),
+                new RatingDto(null, 4, 10.0),
+                new RatingDto(null, 5, 5.0),
+                new RatingDto(null, 6, 6.0)
+        );
+    }
+
+    @Test
+    @DisplayName("UC-EVA-submit-evaluation 9a: a new peer evaluation of a deactivated teammate is rejected, and nothing is saved")
+    void testStudentJohnCannotEvaluateDeactivatedTeammate() throws Exception {
+        fixClockOn(LocalDate.of(2023, 9, 15)); // The previous week, 2023-W36, is open, and nobody has evaluated anyone in it
+        deactivate(5); // Eric, John's teammate
+
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(null, "2023-W36", 4, "John Smith", 5, "Eric Hudson", sixRatings(), 41.0, "Good job", "Keep it up", null, null);
+
+        this.mockMvc.perform(post(this.baseUrl + "/evaluations").contentType(MediaType.APPLICATION_JSON).content(this.jsonMapper.writeValueAsString(peerEvaluationDto)).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("This teammate's account is deactivated and can no longer be evaluated."));
+
+        assertThat(this.evaluationRepository.findByWeekAndEvaluateeId("2023-W36", 5)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("BR-no-evaluation-of-inactive: an evaluation written before the deactivation is kept and stays editable while its window is open")
+    void testEvaluationOfDeactivatedStudentIsKeptAndEditable() throws Exception {
+        fixClockOn(LocalDate.of(2023, 8, 8)); // 2023-W32, so evaluation 1 (John of Eric, 2023-W31) is still editable
+        deactivate(5);
+
+        this.mockMvc.perform(get(this.baseUrl + "/evaluations/evaluators/4/week/2023-W31").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data[*].evaluateeId", Matchers.hasItem(5)));
+
+        List<RatingDto> ratingDtos = List.of(
+                new RatingDto(1, 1, 4.0),
+                new RatingDto(2, 2, 9.0),
+                new RatingDto(3, 3, 7.0),
+                new RatingDto(4, 4, 10.0),
+                new RatingDto(5, 5, 5.0),
+                new RatingDto(6, 6, 6.0)
+        );
+        PeerEvaluationDto update = new PeerEvaluationDto(1, "2023-W31", 4, "John Smith", 5, "Eric Hudson", ratingDtos, 41.0, "Edited after Eric withdrew", "Keep it up", null, null);
+
+        this.mockMvc.perform(put(this.baseUrl + "/evaluations/1").contentType(MediaType.APPLICATION_JSON).content(this.jsonMapper.writeValueAsString(update)).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.data.publicComment").value("Edited after Eric withdrew"));
+    }
+
+    @Test
+    @DisplayName("UC-EVA-section-evaluation-report: a deactivated student who was evaluated in the week is listed with her grade")
+    void testSectionReportListsDeactivatedStudentForAWeekSheWasEvaluated() throws Exception {
+        deactivate(4); // John received evaluations in 2023-W31
+
+        this.mockMvc.perform(get(this.baseUrl + "/evaluations/sections/2/week/2023-W31").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminBingyangToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages", Matchers.hasSize(11)))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[?(@.studentId == 4)].averageTotalScore", Matchers.contains(Matchers.closeTo(51.33, 0.01))));
+    }
+
+    @Test
+    @DisplayName("UC-EVA-section-evaluation-report: for a week she received no evaluation a deactivated student is not listed, while an active one still is, at 0.0")
+    void testSectionReportOmitsDeactivatedStudentForAWeekSheWasNotEvaluated() throws Exception {
+        deactivate(4); // Nobody was evaluated in 2023-W36
+
+        this.mockMvc.perform(get(this.baseUrl + "/evaluations/sections/2/week/2023-W36").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminBingyangToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages", Matchers.hasSize(10)))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[*].studentId", Matchers.not(Matchers.hasItem(4))))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[?(@.studentId == 5)].averageTotalScore", Matchers.contains(0.0)));
     }
 
 }

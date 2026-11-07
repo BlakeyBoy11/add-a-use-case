@@ -33,6 +33,7 @@ public class EvaluationService {
 
     private static final String RUBRIC_MISMATCH_MESSAGE = "This evaluation was scored against a different set of criteria and can no longer be updated.";
     private static final String NOT_PREVIOUS_WEEK_MESSAGE = "You can only submit evaluations for the previous week.";
+    private static final String DEACTIVATED_EVALUATEE_MESSAGE = "This teammate's account is deactivated and can no longer be evaluated.";
     private static final String WINDOW_CLOSED_MESSAGE = "The submission window for this peer evaluation has closed, so it can no longer be changed.";
 
     private final PeerEvaluationRepository evaluationRepository;
@@ -65,6 +66,14 @@ public class EvaluationService {
         Team evaluateeTeam = newPeerEvaluation.getEvaluatee().getTeam();
         if (evaluatorTeamId == null || evaluateeTeam == null || !evaluatorTeamId.equals(evaluateeTeam.getTeamId())) {
             throw new PeerEvaluationIllegalArgumentException("The evaluator and evaluatee must be on the same team.");
+        }
+
+        // UC-EVA-submit-evaluation 9a: a new peer evaluation of a deactivated student is rejected
+        // (BR-no-evaluation-of-inactive). Checked after the team checks and before the duplicate check, so the
+        // evaluator is told why rather than that she evaluated her already. Edits are not checked: an evaluation
+        // written before the deactivation stays editable until its window closes (BR-evaluation-editable-until-close).
+        if (!newPeerEvaluation.getEvaluatee().isEnabled()) {
+            throw new PeerEvaluationIllegalArgumentException(DEACTIVATED_EVALUATEE_MESSAGE);
         }
 
         // Make sure this is not a duplicate evaluation
@@ -224,10 +233,15 @@ public class EvaluationService {
         List<Student> students = this.studentRepository.findBySectionSectionId(sectionId).stream().filter(student -> student.getTeam() != null).collect(Collectors.toList());
 
         // For each student, compute her average total score, collect all public comments and private comments, and compute rating averages for each criterion.
-        students.forEach(student -> {
-            PeerEvaluationAverage peerEvaluationAverage = getPeerEvaluationAverage(week, student);
-            report.getPeerEvaluationAverages().add(peerEvaluationAverage);
-        });
+        // A deactivated student is listed only for a week in which she received a peer evaluation, which since
+        // BR-no-evaluation-of-inactive is in effect a week before her deactivation. Her record before she withdrew
+        // stays, and the weeks after it do not show her at 0. An active student is listed in every week, as before.
+        students.stream()
+                .filter(student -> student.isEnabled() || !this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId()).isEmpty())
+                .forEach(student -> {
+                    PeerEvaluationAverage peerEvaluationAverage = getPeerEvaluationAverage(week, student);
+                    report.getPeerEvaluationAverages().add(peerEvaluationAverage);
+                });
 
         // Who has not submitted is not part of this report: it is BR-submission-owed, which the notification slice
         // owns (GET /sections/{sectionId}/submission-status). This used to count a student as done after she
