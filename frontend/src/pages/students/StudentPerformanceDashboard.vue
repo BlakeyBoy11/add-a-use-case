@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import axios from 'axios' // Only for isAxiosError; the call itself goes through apis/student
+import { httpStatusOf } from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import StudentActivities from '../activities/admin/StudentActivities.vue'
 import StudentEvaluations from '../evaluations/admin/StudentEvaluations.vue'
@@ -78,7 +78,7 @@ async function confirmDeactivation() {
   } catch (error) {
     // 6a: the shared request instance has already shown "This student is already deactivated."; re-fetch so the
     // page shows her as deactivated. Any other failure (a 403 has already routed away) is left to that instance.
-    if (axios.isAxiosError(error) && error.response?.status === 409) {
+    if (httpStatusOf(error) === 409) {
       await loadStudent()
     }
   } finally {

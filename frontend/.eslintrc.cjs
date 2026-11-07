@@ -13,6 +13,25 @@ module.exports = {
     ecmaVersion: 'latest'
   },
   rules: {
-    'vue/multi-word-component-names': 'off'
-  }
+    'vue/multi-word-component-names': 'off',
+    // frontend/CLAUDE.md: every HTTP call goes through the shared instance in src/utils/request.ts
+    'no-restricted-imports': [
+      'error',
+      {
+        paths: [
+          {
+            name: 'axios',
+            message:
+              'Go through an src/apis/<feature>/ module; for a failed request, use httpStatusOf from @/utils/request.'
+          }
+        ]
+      }
+    ]
+  },
+  overrides: [
+    {
+      files: ['src/utils/request.ts'],
+      rules: { 'no-restricted-imports': 'off' }
+    }
+  ]
 }

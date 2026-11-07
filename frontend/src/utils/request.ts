@@ -144,4 +144,15 @@ requestInstance.interceptors.response.use(
   }
 )
 
+/**
+ * The HTTP status of a request through this instance that failed, so a page can react to one status (a 409, say)
+ * without importing axios.
+ *
+ * @param error - What the failed request rejected with.
+ * @returns The response's status, or undefined for a network failure or a non-HTTP error.
+ */
+export function httpStatusOf(error: unknown): number | undefined {
+  return axios.isAxiosError(error) ? error.response?.status : undefined
+}
+
 export default requestInstance

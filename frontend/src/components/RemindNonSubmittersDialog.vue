@@ -109,7 +109,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import axios from 'axios'
+import { httpStatusOf } from '@/utils/request'
 import moment from 'moment'
 import { getSubmissionStatus, sendReminders } from '@/apis/notification'
 import type { ReminderResult, SubmissionStatus, SubmittableItem } from '@/apis/notification/types'
@@ -174,7 +174,7 @@ async function confirm() {
     const response = await sendReminders(props.sectionId, item.value, status.value.week)
     result.value = response.data
   } catch (error) {
-    const httpStatus = axios.isAxiosError(error) ? error.response?.status : undefined
+    const httpStatus = httpStatusOf(error)
     if (httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500) {
       await loadStatus()
     } else {
