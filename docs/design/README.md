@@ -48,6 +48,8 @@ Each Level-2 doc covers exactly one UC area and is named after that area's lower
 
 | File | Area | Scope |
 |------|------|-------|
+| `stu.md` | STU | students: deactivation, and the active-account check it relies on |
+| `eva.md` | EVA | peer evaluations (partial: what deactivating a student changes) |
 | `not.md` | NOT | who still owes a weekly activity report or peer evaluation; scheduled and on-demand reminders |
 | `tpl.md` | TPL | templates / team-document provisioning |
 | `glo.md` | GLO | glossary |
@@ -61,7 +63,7 @@ Each Level-2 doc covers exactly one UC area and is named after that area's lower
 | `cfg.md` | CFG | AI configuration |
 | `ai.md`  | AI  | AI assistants |
 
-The table lists `NOT`, the first performance-tracking area designed through `/design`, and the RAM areas, where the method is applied prospectively; any other foundation or performance-tracking area (`EVA`, `WAR`, `TEA`, …) gets a row and a doc the first time one of its use cases is designed. Add a doc only when its area is first designed; this directory grows as `/design` runs. If a new UC area is introduced in `requirements/use-cases.md`, add the matching row above and a same-named design doc when it's implemented.
+The table lists the foundation and performance-tracking areas designed through `/design` so far (`STU`, `EVA`, `NOT`) and the RAM areas, where the method is applied prospectively; any other foundation or performance-tracking area (`WAR`, `TEA`, …) gets a row and a doc the first time one of its use cases is designed. Add a doc only when its area is first designed; this directory grows as `/design` runs. If a new UC area is introduced in `requirements/use-cases.md`, add the matching row above and a same-named design doc when it's implemented.
 
 ## **The cardinal rule: cite, don't restate**
 
