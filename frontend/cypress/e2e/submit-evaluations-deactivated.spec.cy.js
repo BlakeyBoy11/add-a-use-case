@@ -123,11 +123,41 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     cy.wait('@team') // The team is re-read
     listed().should('have.length', 2)
     cy.get('.el-table__body-wrapper').should('not.contain', 'Jerry Moon')
+    // Every evaluation still listed is saved, so the submission is complete and is confirmed
+    cy.get('.el-message').should('contain', 'Peer evaluations submitted successfully')
+    cy.wait('@receipt')
 
     cy.get('[data-cy=evaluations-update]').click()
     cy.wait(['@put', '@put'])
     cy.get('@put.all').should('have.length', 2)
     cy.get('@post.all').should('have.length', 3) // No further POST
+    cy.get('@receipt.all').should('have.length', 1) // and no second confirmation
+  })
+
+  it('confirms the submission on the retry after a failure that leaves an evaluation unsaved', () => {
+    team = [teammate(4, 'John', 'Smith', true), teammate(5, 'Eric', 'Hudson', true)]
+    savedEvaluations = []
+    let failEric = true
+    cy.intercept('POST', '**/api/v1/evaluations', (req) => {
+      if (req.body.evaluateeId === 5 && failEric) {
+        failEric = false
+        req.reply({ statusCode: 500, body: { flag: false, code: 500, message: 'Something went wrong.' } })
+        return
+      }
+      req.reply(ok({ ...req.body, evaluationId: 50 + req.body.evaluateeId }))
+    }).as('post')
+    openPage()
+
+    cy.get('[data-cy=evaluations-submit]').click()
+    cy.wait(['@post', '@post'])
+    cy.get('.el-message').should('contain', 'Something went wrong.')
+    cy.get('@receipt.all').should('have.length', 0) // Not complete yet
+
+    cy.get('[data-cy=evaluations-submit]').click()
+    cy.wait(['@put', '@post'])
+    cy.get('.el-message').should('contain', 'Peer evaluations submitted successfully')
+    cy.wait('@receipt')
+    cy.get('@receipt.all').should('have.length', 1)
   })
 
   it('keeps what the student typed for an evaluation whose save failed', () => {

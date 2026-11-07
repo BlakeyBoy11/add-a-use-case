@@ -167,6 +167,7 @@ const students = ref<Student[]>([]) // Students on the same team
 const sectionId = ref<number>() // Section ID of the team
 const criteria = ref<Criterion[]>([]) // Criteria used for peer evaluations
 const isLoading = ref(false)
+const confirmationOwed = ref(false) // A new submission was started and its confirmation email is not yet sent
 
 const userInfoStore = useUserInfoStore() // Need team ID to search for students
 
@@ -247,7 +248,9 @@ async function prepareStartingPeerEvaluations() {
 async function savePeerEvaluations() {
   if (!peerEvalutions.value) return
   const evaluations = peerEvalutions.value
-  const isSubmission = isNewSubmission.value // The same rule that labels the button Submit or Update
+  // The same rule that labels the button Submit or Update. The confirmation stays owed until every listed evaluation
+  // is saved, so a save that partly fails confirms on the retry that completes it, even when that retry is an Update.
+  if (isNewSubmission.value) confirmationOwed.value = true
 
   isLoading.value = true
   const results = await Promise.allSettled(
@@ -269,7 +272,12 @@ async function savePeerEvaluations() {
     return result?.status === 'fulfilled' ? result.value : evaluation
   })
 
-  if (results.some((result) => result.status === 'rejected')) {
+  const failedEvaluateeIds = new Set(
+    evaluations
+      .filter((_, i) => results[i]?.status === 'rejected')
+      .map((evaluation) => evaluation.evaluateeId)
+  )
+  if (failedEvaluateeIds.size > 0) {
     // 9a (or any other failure): the shared request instance has shown the message. Re-read the team and drop an
     // unsaved evaluation of anyone no longer an active teammate, since it can never be saved.
     await loadStudents()
@@ -279,10 +287,11 @@ async function savePeerEvaluations() {
     peerEvalutions.value = peerEvalutions.value.filter(
       (evaluation) => evaluation.evaluationId != null || activeTeammateIds.has(evaluation.evaluateeId)
     )
-    return
+    // Any other failure leaves its evaluation listed and unsaved: stop here, and let the student retry
+    if (peerEvalutions.value.some((evaluation) => failedEvaluateeIds.has(evaluation.evaluateeId))) return
   }
 
-  if (!isSubmission) {
+  if (!confirmationOwed.value) {
     ElMessage.success('Peer evaluations updated successfully')
     return
   }
@@ -290,6 +299,7 @@ async function savePeerEvaluations() {
 
   // Send an submission confirmation email to the submitter
   await sendPeerEvaluationSubmissionConfirmationEmail(previousWeekRange.value)
+  confirmationOwed.value = false
   ElMessage.success('A confirmation email has been sent to you.')
 }
 </script>
