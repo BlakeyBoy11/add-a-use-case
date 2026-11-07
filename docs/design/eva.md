@@ -37,7 +37,10 @@ classDiagram
 ```
 
 - [`EvaluationService`](../../backend/src/main/java/team/projectpulse/evaluation/EvaluationService.java): `addPeerEvaluation` gains the deactivated-evaluatee check, and `generateWeeklyPeerEvaluationReportForSection` gains the listing rule. `updatePeerEvaluation` is unchanged and is listed only because the decision below depends on it.
-- [`SubmitTeamsEvaluations.vue`](../../frontend/src/pages/evaluations/SubmitTeamsEvaluations.vue): when it builds a new submission it leaves out teammates whose `enabled` is false (the teammate `StudentDto` from `GET /students/teams/{teamId}` already carries it), and it reloads its teammates and evaluations after a rejected submission.
+- [`SubmitTeamsEvaluations.vue`](../../frontend/src/pages/evaluations/SubmitTeamsEvaluations.vue): changed in three ways.
+  - It lists a teammate when her account is active (`enabled` is already in the teammate `StudentDto` from `GET /students/teams/{teamId}`) or when the evaluator already has a saved evaluation of her for the week. A deactivated teammate with no saved evaluation is not listed.
+  - Saving sends one request per listed teammate and waits for all of them to settle rather than stopping at the first failure: `PUT` for a teammate who already has a saved evaluation, `POST` for one who does not. Today the page sends `POST` for everyone or `PUT` for everyone, which after a partial save would leave the unsaved teammates unreachable.
+  - If any request fails, it shows the failure and reloads its teammates and evaluations.
 - No new class, controller, route, or exception: the rejection reuses `PeerEvaluationIllegalArgumentException` (`400` / `INVALID_ARGUMENT`).
 
 ## Sequence
@@ -51,9 +54,9 @@ sequenceDiagram
     participant C as EvaluationController
     participant S as EvaluationService
     participant R as PeerEvaluationRepository
-    P->>P: load teammates; a new submission lists only active ones (step 2)
+    P->>P: load teammates; list the active ones and any with a saved evaluation (step 2)
     E->>P: evaluate each active team member and confirm (steps 4-8)
-    loop one POST /api/v1/evaluations per evaluatee
+    loop one request per listed teammate, all sent: POST if unsaved, PUT if saved
         P->>C: addPeerEvaluation
         C->>S: addPeerEvaluation
         S->>S: open window (BR-active-weeks, BR-evaluation-submission-window)
@@ -67,9 +70,9 @@ sequenceDiagram
             C-->>P: 200
         end
     end
-    alt any POST returned 400 (9a1)
+    alt any request returned 400 (9a1)
         P->>E: show the message
-        P->>P: reload teammates and evaluations (9a2: back to step 2, without her)
+        P->>P: reload (9a2: back to step 2, without her; the saved evaluations now go as PUT)
     else all saved
         P->>E: "Peer evaluations submitted successfully" (step 9)
     end
@@ -83,7 +86,7 @@ The evaluatee check runs after the team checks and before the duplicate check, s
 |---|---|---|---|---|
 | `POST /api/v1/evaluations` (changed) | Unchanged: any authenticated caller at the route; the service requires the evaluator to be a student on the evaluatee's team | Unchanged | Unchanged | **9a** the evaluatee's account is deactivated: `400` / `INVALID_ARGUMENT`, message "This teammate's account is deactivated and can no longer be evaluated.", nothing saved. Existing errors unchanged |
 | `PUT /api/v1/evaluations/{evaluationId}` | Unchanged | Unchanged | Unchanged: an evaluation of a student written before she was deactivated stays editable until its window closes | Unchanged |
-| `GET /api/v1/evaluations/sections/{sectionId}/week/{week}` (changed) | Unchanged (`sectionInstructorAuthorizationManager`) | Unchanged | A student is listed when she is on a team **and** either her account is active or she received at least one peer evaluation for `week` | Unchanged |
+| `GET /api/v1/evaluations/sections/{sectionId}/week/{week}` (changed) | Unchanged (`sectionInstructorAuthorizationManager`) | Unchanged | A student is listed when she is on a team (the existing condition, unchanged) **and**, new, either her account is active or she received at least one peer evaluation for `week` | Unchanged |
 
 ## Key decisions
 
@@ -114,8 +117,9 @@ No delta. The rules read `PeerEvaluationUser.enabled` and the existing `PeerEval
 | UC-EVA-submit-evaluation 9a, service | unit | `addPeerEvaluation` with a deactivated evaluatee on the evaluator's team throws `PeerEvaluationIllegalArgumentException` with the message, and nothing is saved |
 | UC-EVA-submit-evaluation 9a, route | integration | A student's `POST /evaluations` for a deactivated teammate, in an open window, returns `400` with the message, and no evaluation of her exists for that week |
 | BR-no-evaluation-of-inactive, kept and editable | integration | An evaluation of a student written before she is deactivated is still returned by `GET /evaluations/evaluators/{evaluatorId}/week/{week}`, and its evaluator's `PUT` while the window is open returns `200` |
-| UC-EVA-submit-evaluation step 2 | E2E (Cypress, API stubbed) | A new submission does not list a deactivated teammate; update mode still shows a kept evaluation of her |
-| UC-EVA-submit-evaluation 9a, page | E2E (Cypress, API stubbed) | When one `POST` returns the 9a `400`, the page shows the message and reloads its teammates and evaluations |
+| UC-EVA-submit-evaluation step 2 | E2E (Cypress, API stubbed) | A deactivated teammate with no saved evaluation is not listed; one with a saved evaluation (written before she was deactivated) is listed, and her evaluation is sent as a `PUT` |
+| UC-EVA-submit-evaluation 9a, page | E2E (Cypress, API stubbed) | When one of three `POST`s returns the 9a `400`, the other two are still sent; the page shows the message and reloads; the deactivated teammate is no longer listed, and the next save sends `PUT`s for the two saved evaluations |
+| UC-EVA-submit-evaluation, partial save | E2E (Cypress, API stubbed) | With a saved evaluation for one active teammate and none for another, saving sends a `PUT` for the first and a `POST` for the second |
 | UC-EVA-submit-evaluation main, unchanged | integration | Existing `EvaluationIntegrationTest.testStudentJohnAddEvaluation` and the `EvaluationServiceTest` extension tests still pass |
 | UC-EVA-section-evaluation-report, past week | integration | A deactivated student who received at least one peer evaluation for the week is listed with her grade |
 | UC-EVA-section-evaluation-report, later week | integration | For a week in which a deactivated student received no peer evaluation, she is not listed, and an active student with no evaluations is still listed at 0.0 |

@@ -63,9 +63,9 @@ classDiagram
 
 Backend:
 - [`StudentController`](../../backend/src/main/java/team/projectpulse/student/StudentController.java), [`StudentService`](../../backend/src/main/java/team/projectpulse/student/StudentService.java), [`StudentSecurityService`](../../backend/src/main/java/team/projectpulse/student/StudentSecurityService.java): changed.
-- [`StudentInstructorAuthorizationManager`](../../backend/src/main/java/team/projectpulse/security/authorizationmanagers/StudentInstructorAuthorizationManager.java): reused. `StudentCourseAdminAuthorizationManager`: new, in the same package; it reads `studentId` and fails closed like its siblings.
+- [`StudentInstructorAuthorizationManager`](../../backend/src/main/java/team/projectpulse/security/authorizationmanagers/StudentInstructorAuthorizationManager.java): reused. It passes when the caller's id is among `student.section.instructors`, so a student (whose id is never there) and an instructor of another course section fail, and an instructor assigned to several course sections passes for each. `StudentCourseAdminAuthorizationManager`: new, in the same package; it reads `studentId` and fails closed like its siblings.
 - `ActiveAccountJwtAuthenticationConverter`: new, in `security`. It wraps the existing `jwtAuthenticationConverter()` bean in [`SecurityConfiguration`](../../backend/src/main/java/team/projectpulse/security/SecurityConfiguration.java), keeps its authority mapping, and reads [`UserRepository`](../../backend/src/main/java/team/projectpulse/user/UserRepository.java). Both packages are in the foundation, so the dependency is allowed (`MNT-feature-locality`).
-- `StudentAlreadyDeactivatedException`: new, in `system/exception`, mapped by `ExceptionHandlerAdvice` to `409` / `CONFLICT`.
+- `StudentAlreadyDeactivatedException`: new, in `system/exception`, mapped by `ExceptionHandlerAdvice` to `409` / `StatusCode.CONFLICT` (the code already exists; only the handler is new).
 
 Frontend:
 - [`apis/student`](../../frontend/src/apis/student/index.ts): new `deactivateStudent(id)`.
@@ -116,7 +116,11 @@ sequenceDiagram
     end
 ```
 
-The confirmation (step 4) names each consequence in the use case's Associated Information. She will no longer be able to log in or submit weekly activity reports and peer evaluations, and a session she has open ends on its next request. Her account and her submitted work are kept, she stays on her team, and she can be reactivated.
+The confirmation (step 4) names each consequence in the use case's Associated Information, worded: "Deactivate {first name} {last name}? They will no longer be able to log in or submit weekly activity reports and peer evaluations, and a session they have open ends on its next request. Their account and submitted work are kept, they stay on their team, and they can be reactivated later." Confirm and Cancel are the two buttons.
+
+On `200` the page shows its own toast, "Student deactivated." (the envelope's "Deactivate student successfully" is not shown), and re-fetches the student. On `409` (6a) the shared Axios instance already toasts the envelope's message, so the page adds no message of its own; it re-fetches the student, so the tag shows Deactivated and the button disappears. On `403` the shared instance routes to the forbidden page, as it does for every route.
+
+**Where 3a is refused.** The use case denies at step 3; the design refuses at the `POST`, after the warning. In the UI the two coincide: the details page is reachable only through `GET /students/{studentId}`, which today admits only the student herself and her assigned instructors; the router keeps students off the page; and every assigned instructor may deactivate. So a `403` after the warning arises only from a direct API call, or if OI-65 is fixed by widening the view route without also widening who sees the button.
 
 ### FR-SEC-active-account: a deactivated student's open session
 
@@ -189,8 +193,9 @@ No delta. `PeerEvaluationUser.enabled` already exists, and deactivation writes o
 | UC-STU-deactivate-student main, course admin | integration | The course admin who owns the course but is not assigned to the course section gets `200` |
 | UC-STU-deactivate-student 3a | integration | The student herself, another student, an instructor not assigned to her course section, a course admin of another course, and an id that names no student each get `403` with the `Result` envelope, and the student's account is unchanged |
 | UC-STU-deactivate-student 5a | E2E (Cypress, API stubbed) | Cancelling the confirmation sends no `POST` |
-| UC-STU-deactivate-student step 4 | E2E (Cypress, API stubbed) | The confirmation names the consequences: no login, no weekly activity reports or peer evaluations, work kept, still on her team, can be reactivated |
+| UC-STU-deactivate-student step 4 | E2E (Cypress, API stubbed) | The confirmation shows the wording above, including the open-session sentence; Confirm sends one `POST`, and the page then shows "Student deactivated." and the Deactivated tag |
 | UC-STU-deactivate-student 6a | integration | Deactivating an already-deactivated student returns `409` with the message, and she stays deactivated |
+| UC-STU-deactivate-student 6a, page | E2E (Cypress, API stubbed) | On a `409` the page re-fetches the student and shows the Deactivated tag with no Deactivate button |
 | UC-STU-deactivate-student, button visibility | E2E (Cypress, API stubbed) | Deactivate shows for an active student and not for a deactivated one; the Edit dialog's Status switch shows only for a deactivated student |
 | UC-STU-deactivate-student, open session (FR-SEC-active-account) | integration | A token the student got before she was deactivated returns `401` on `GET /students/{her id}` and on `POST /activities`, and no activity is created |
 | UC-STU-deactivate-student, login | integration | Logging in with her credentials after deactivation returns `401` |
@@ -199,6 +204,8 @@ No delta. `PeerEvaluationUser.enabled` already exists, and deactivation writes o
 | FR-SEC-active-account, converter | unit | An enabled user yields an authentication carrying the token's authorities; a disabled user or a missing row throws `DisabledException` |
 | Generic update cannot deactivate | integration | An assigned instructor's `PUT /students/{id}` with `enabled: false` for an active student returns `200`, and she stays active |
 | Interim reactivate path | integration | An assigned instructor's `PUT /students/{id}` with `enabled: true` for a deactivated student activates her; a student's own `PUT` still cannot change `enabled` (`testStudentJohnUpdatesOwnInfo`, kept) |
+
+Test data: each test that needs a deactivated student deactivates a seeded one itself (through the route, or the repository for service tests), and the class resets the database afterward, as the existing integration tests do. `DataInitializer` gains no deactivated student, because one would change rows, counts, and owing lists that existing tests assert.
 
 The peer-evaluation consequences (BR-no-evaluation-of-inactive, the section report) are tested in [eva.md](eva.md#tests).
 
