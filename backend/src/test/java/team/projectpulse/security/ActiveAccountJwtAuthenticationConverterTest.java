@@ -68,16 +68,6 @@ class ActiveAccountJwtAuthenticationConverterTest {
     }
 
     @Test
-    @DisplayName("A deactivated account, or one that no longer exists, is refused with DisabledException")
-    void deactivatedOrMissingAccountIsRefused() {
-        // The repository answers false for both: the row is disabled, or there is no row
-        given(this.userRepository.existsByIdAndEnabledTrue(4)).willReturn(false);
-
-        assertThatThrownBy(() -> this.converter.convert(aToken().claim("userId", 4L).build()))
-                .isInstanceOf(DisabledException.class);
-    }
-
-    @Test
     @DisplayName("A token with no usable userId claim is refused without a lookup")
     void tokenWithoutUserIdIsRefused() {
         assertThatThrownBy(() -> this.converter.convert(aToken().build()))

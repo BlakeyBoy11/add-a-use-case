@@ -202,7 +202,7 @@ No delta. `PeerEvaluationUser.enabled` already exists, and deactivation writes o
 | UC-STU-deactivate-student, login | integration | Logging in with her credentials after deactivation returns `401` |
 | UC-STU-deactivate-student, team kept | integration | After deactivation she still appears in `GET /students/teams/{teamId}` with `enabled: false`, and `GET /sections/{sectionId}/submission-status` does not list her as owing |
 | FR-SEC-active-account, instructor | integration | A deactivated instructor's unexpired token returns `401` |
-| FR-SEC-active-account, converter | unit | An enabled user yields an authentication carrying the token's authorities; a disabled user or a missing row throws `DisabledException` |
+| FR-SEC-active-account, converter | unit | An enabled user yields an authentication carrying the token's authorities; a token with no usable `userId` claim throws `DisabledException` without a lookup. That a disabled or missing account is refused is asserted only end to end (the open-session, instructor, and deleted-account rows), because a mocked repository makes the converter's own query the test's oracle |
 | Generic update cannot deactivate | integration | An assigned instructor's `PUT /students/{id}` with `enabled: false` for an active student returns `200`, and she stays active |
 | Interim reactivate path | integration | An assigned instructor's `PUT /students/{id}` with `enabled: true` for a deactivated student activates her; a student's own `PUT` still cannot change `enabled` (`testStudentJohnUpdatesOwnInfo`, kept) |
 
