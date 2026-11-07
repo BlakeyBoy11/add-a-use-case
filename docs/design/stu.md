@@ -9,7 +9,7 @@
 
 The `student` slice is part of the shared foundation ([component view](architectural-design.md#shared-foundation-components)). This design adds the one way to deactivate a student: a dedicated action on the student's details page, with the use case's warning and confirmation, backed by its own route. Deactivation sets `PeerEvaluationUser.enabled` to false. Nothing is deleted, and the student stays on her team.
 
-Two cross-cutting pieces make the consequence true. First, `security` checks on every request that the caller's account is still active, so a student who is already signed in is cut off on her next request rather than when her 2-hour token expires (FR-SEC-active-account). Second, `evaluation` rejects new peer evaluations of her and stops listing her in weeks she was not evaluated ([eva.md](eva.md)).
+Two cross-cutting pieces make the consequence true. First, `security` checks on every request that the caller's account is still active, so a student who is already logged in is cut off on her next request rather than when her 2-hour token expires (FR-SEC-active-account). Second, `evaluation` rejects new peer evaluations of her and stops listing her in weeks she was not evaluated ([eva.md](eva.md)).
 
 Before this design, the only way to deactivate a student was the Status switch in the Edit dialog, saved through the generic `PUT /students/{studentId}` with no warning, and the `enabled` flag was checked only at login.
 
@@ -116,7 +116,7 @@ sequenceDiagram
     end
 ```
 
-The confirmation (step 4) names each consequence in the use case's Associated Information. She will no longer be able to sign in or submit weekly activity reports and peer evaluations, and a session she has open ends on its next request. Her account and her submitted work are kept, she stays on her team, and she can be reactivated.
+The confirmation (step 4) names each consequence in the use case's Associated Information. She will no longer be able to log in or submit weekly activity reports and peer evaluations, and a session she has open ends on its next request. Her account and her submitted work are kept, she stays on her team, and she can be reactivated.
 
 ### FR-SEC-active-account: a deactivated student's open session
 
@@ -136,7 +136,7 @@ sequenceDiagram
     AC-->>F: DisabledException
     F-->>SPA: 401 "User account is abnormal." (entry point → ExceptionHandlerAdvice)
     SPA->>SPA: clear token and user stores; redirect to login
-    St->>SPA: sign in again
+    St->>SPA: log in again
     SPA->>F: POST /api/v1/users/login
     F-->>SPA: 401 (login already refuses a disabled account)
 ```
@@ -159,7 +159,7 @@ sequenceDiagram
 - an in-memory token blocklist: it is per-instance, and every place that disables an account would have to populate it;
 - checks inside the activity and evaluation services: they miss reads and every future route;
 - caching the flag: it reopens the staleness window the check exists to close;
-- shortening the token's lifetime: it narrows the window without closing it, and makes everyone sign in more often.
+- shortening the token's lifetime: it narrows the window without closing it, and makes everyone log in more often.
 
 The architecture-of-record's [Authentication](architectural-design.md#authentication) section and its runtime authentication sequence record the check.
 
@@ -189,11 +189,11 @@ No delta. `PeerEvaluationUser.enabled` already exists, and deactivation writes o
 | UC-STU-deactivate-student main, course admin | integration | The course admin who owns the course but is not assigned to the course section gets `200` |
 | UC-STU-deactivate-student 3a | integration | The student herself, another student, an instructor not assigned to her course section, a course admin of another course, and an id that names no student each get `403` with the `Result` envelope, and the student's account is unchanged |
 | UC-STU-deactivate-student 5a | E2E (Cypress, API stubbed) | Cancelling the confirmation sends no `POST` |
-| UC-STU-deactivate-student step 4 | E2E (Cypress, API stubbed) | The confirmation names the consequences: no sign-in, no weekly activity reports or peer evaluations, work kept, still on her team, can be reactivated |
+| UC-STU-deactivate-student step 4 | E2E (Cypress, API stubbed) | The confirmation names the consequences: no login, no weekly activity reports or peer evaluations, work kept, still on her team, can be reactivated |
 | UC-STU-deactivate-student 6a | integration | Deactivating an already-deactivated student returns `409` with the message, and she stays deactivated |
 | UC-STU-deactivate-student, button visibility | E2E (Cypress, API stubbed) | Deactivate shows for an active student and not for a deactivated one; the Edit dialog's Status switch shows only for a deactivated student |
 | UC-STU-deactivate-student, open session (FR-SEC-active-account) | integration | A token the student got before she was deactivated returns `401` on `GET /students/{her id}` and on `POST /activities`, and no activity is created |
-| UC-STU-deactivate-student, sign-in | integration | Signing in with her credentials after deactivation returns `401` |
+| UC-STU-deactivate-student, login | integration | Logging in with her credentials after deactivation returns `401` |
 | UC-STU-deactivate-student, team kept | integration | After deactivation she still appears in `GET /students/teams/{teamId}` with `enabled: false`, and `GET /sections/{sectionId}/submission-status` does not list her as owing |
 | FR-SEC-active-account, instructor | integration | A deactivated instructor's unexpired token returns `401` |
 | FR-SEC-active-account, converter | unit | An enabled user yields an authentication carrying the token's authorities; a disabled user or a missing row throws `DisabledException` |
