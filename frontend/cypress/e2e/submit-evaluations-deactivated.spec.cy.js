@@ -93,7 +93,7 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     })
   })
 
-  it('sends every POST when one is rejected for a deactivated teammate, then reloads without her (9a)', () => {
+  it('sends every POST when one is rejected for a deactivated teammate, then drops her (9a)', () => {
     team = [teammate(4, 'John', 'Smith', true), teammate(5, 'Eric', 'Hudson', true), teammate(6, 'Jerry', 'Moon', true)]
     savedEvaluations = []
     let nextId = 20
@@ -120,7 +120,7 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     cy.wait(['@post', '@post', '@post'])
     cy.get('@post.all').should('have.length', 3)
     cy.get('.el-message').should('contain', "This teammate's account is deactivated and can no longer be evaluated.")
-    cy.wait(['@team', '@saved']) // The reload
+    cy.wait('@team') // The team is re-read
     listed().should('have.length', 2)
     cy.get('.el-table__body-wrapper').should('not.contain', 'Jerry Moon')
 
@@ -128,6 +128,29 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     cy.wait(['@put', '@put'])
     cy.get('@put.all').should('have.length', 2)
     cy.get('@post.all').should('have.length', 3) // No further POST
+  })
+
+  it('keeps what the student typed for an evaluation whose save failed', () => {
+    team = [teammate(4, 'John', 'Smith', true), teammate(5, 'Eric', 'Hudson', true)]
+    savedEvaluations = []
+    cy.intercept('POST', '**/api/v1/evaluations', (req) => {
+      if (req.body.evaluateeId === 5) {
+        req.reply({ statusCode: 500, body: { flag: false, code: 500, message: 'Something went wrong.' } })
+        return
+      }
+      const evaluation = { ...req.body, evaluationId: 40 }
+      savedEvaluations.push(evaluation)
+      req.reply(ok(evaluation))
+    }).as('post')
+    openPage()
+
+    cy.contains('.el-table__row', 'Eric Hudson').find('textarea').first().type('Eric carried the sprint demo.')
+    cy.get('[data-cy=evaluations-submit]').click()
+
+    cy.wait(['@post', '@post'])
+    cy.get('.el-message').should('contain', 'Something went wrong.')
+    cy.contains('.el-table__row', 'Eric Hudson').find('textarea').first().should('have.value', 'Eric carried the sprint demo.')
+    cy.get('[data-cy=evaluations-submit]').should('exist') // Eric's evaluation is still unsaved
   })
 
   it('sends a PUT for a saved evaluation and a POST for an unsaved one in the same save (partial save)', () => {

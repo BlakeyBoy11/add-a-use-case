@@ -262,17 +262,26 @@ async function savePeerEvaluations() {
   )
   isLoading.value = false
 
+  // Keep each evaluation that saved as the server returned it, and each one that failed as the student left it, so a
+  // failure for one teammate loses nothing she typed.
+  peerEvalutions.value = evaluations.map((evaluation, i) => {
+    const result = results[i]
+    return result?.status === 'fulfilled' ? result.value : evaluation
+  })
+
   if (results.some((result) => result.status === 'rejected')) {
-    // 9a (or any other failure): the shared request instance has shown the message. Reload, so a teammate
-    // deactivated since the page loaded drops out and the evaluations that did save come back as updates.
+    // 9a (or any other failure): the shared request instance has shown the message. Re-read the team and drop an
+    // unsaved evaluation of anyone no longer an active teammate, since it can never be saved.
     await loadStudents()
-    await prepareStartingPeerEvaluations()
+    const activeTeammateIds = new Set(
+      students.value.filter((student) => student.enabled).map((student) => student.id as number)
+    )
+    peerEvalutions.value = peerEvalutions.value.filter(
+      (evaluation) => evaluation.evaluationId != null || activeTeammateIds.has(evaluation.evaluateeId)
+    )
     return
   }
 
-  peerEvalutions.value = results.map(
-    (result) => (result as PromiseFulfilledResult<PeerEvaluation>).value
-  )
   if (!isSubmission) {
     ElMessage.success('Peer evaluations updated successfully')
     return
