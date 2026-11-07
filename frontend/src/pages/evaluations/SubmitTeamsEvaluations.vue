@@ -106,12 +106,18 @@
     <div style="display: flex; justify-content: flex-end">
       <el-button
         type="primary"
-        @click="submitPeerEvaluations"
+        @click="savePeerEvaluations"
         v-if="isNewSubmission"
         :loading="isLoading"
+        data-cy="evaluations-submit"
         >Submit</el-button
       >
-      <el-button type="warning" @click="updatePeerEvaluations" :loading="isLoading" v-else
+      <el-button
+        type="warning"
+        @click="savePeerEvaluations"
+        :loading="isLoading"
+        v-else
+        data-cy="evaluations-update"
         >Update</el-button
       >
     </div>
@@ -119,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { findStudentsByTeamId } from '@/apis/student'
 import type { Student, FindStudentByTeamIdResponse } from '@/apis/student/types'
 import { findSectionById } from '@/apis/section'
@@ -150,7 +156,10 @@ const peerEvalutions = ref<PeerEvaluation[]>()
 
 const loading = ref<boolean>(false)
 
-let isNewSubmission = true // Flag to indicate if this is a new submission or an update
+// A new submission while any listed teammate has no saved evaluation for the week; an update once all are saved
+const isNewSubmission = computed(() =>
+  (peerEvalutions.value ?? []).some((evaluation) => evaluation.evaluationId == null)
+)
 
 const teamId = ref<number>(NaN) // Team ID of the student
 
@@ -158,6 +167,7 @@ const students = ref<Student[]>([]) // Students on the same team
 const sectionId = ref<number>() // Section ID of the team
 const criteria = ref<Criterion[]>([]) // Criteria used for peer evaluations
 const isLoading = ref(false)
+const confirmationOwed = ref(false) // A new submission was started and its confirmation email is not yet sent
 
 const userInfoStore = useUserInfoStore() // Need team ID to search for students
 
@@ -196,67 +206,101 @@ async function loadCriteria() {
 
 // Create starting peer evaluations
 async function prepareStartingPeerEvaluations() {
-  // Get the evaluations for the current week
+  // Get the evaluations already saved for the week
   const result: FetchPeerEvaluationsResponse = await getEvaluationsByEvaluatorIdAndWeek(
     (userInfoStore.userInfo as Student).id as number,
     previousWeek.value
   )
+  const savedByEvaluateeId = new Map(
+    result.data.map((evaluation) => [evaluation.evaluateeId, evaluation])
+  )
 
-  // If the student has already submitted evaluations for the current week, load them
-  if (result.data.length > 0) {
-    peerEvalutions.value = result.data
-    isNewSubmission = false
-  } else {
-    // If not, create a new set of evaluations
-    isNewSubmission = true
-    peerEvalutions.value = students.value.map((student) => ({
-      week: previousWeek.value,
-      evaluatorId: (userInfoStore.userInfo as Student).id as number,
-      evaluateeId: student.id as number,
-      evaluateeName: `${student.firstName} ${student.lastName}`,
-      ratings: criteria.value.map((criterion) => ({
-        criterionId: criterion.criterionId as number,
-        criterion: criterion.criterion,
-        actualScore: 10 // Default score, can be changed by the user
-      })),
-      publicComment: '',
-      privateComment: ''
-    }))
-  }
+  // UC-EVA-submit-evaluation step 2: list each active teammate, and every evaluation the student already saved this
+  // week. A teammate deactivated before she was evaluated is left out, since BR-no-evaluation-of-inactive rejects a
+  // new evaluation of her. A saved evaluation stays, and stays editable (BR-evaluation-editable-until-close), even
+  // when its evaluatee has since been deactivated or moved off the team.
+  const teammateIds = new Set(students.value.map((student) => student.id as number))
+  peerEvalutions.value = [
+    ...students.value
+      .filter((student) => student.enabled || savedByEvaluateeId.has(student.id as number))
+      .map(
+        (student) =>
+          savedByEvaluateeId.get(student.id as number) ?? {
+            week: previousWeek.value,
+            evaluatorId: (userInfoStore.userInfo as Student).id as number,
+            evaluateeId: student.id as number,
+            evaluateeName: `${student.firstName} ${student.lastName}`,
+            ratings: criteria.value.map((criterion) => ({
+              criterionId: criterion.criterionId as number,
+              criterion: criterion.criterion,
+              actualScore: 10 // Default score, can be changed by the user
+            })),
+            publicComment: '',
+            privateComment: ''
+          }
+      ),
+    ...result.data.filter((evaluation) => !teammateIds.has(evaluation.evaluateeId))
+  ]
 }
 
-// Submit peer evaluations
-async function submitPeerEvaluations() {
-  if (peerEvalutions.value) {
-    const submitPromises = peerEvalutions.value.map(async (evaluation) => {
-      const result: SubmitPeerEvaluationResponse = await submitEvaluation(evaluation)
-      return result.data
-    })
-    isLoading.value = true
-    peerEvalutions.value = await Promise.all(submitPromises) // Wait for all promises to resolve
-    isNewSubmission = false // Change to update mode
-    ElMessage.success('Peer evaluations submitted successfully')
-    isLoading.value = false
+// Save peer evaluations: one request per listed teammate, a PUT for one already saved and a POST for one not yet,
+// all sent and all awaited, so a failure for one teammate does not leave the others unsent.
+async function savePeerEvaluations() {
+  if (!peerEvalutions.value) return
+  const evaluations = peerEvalutions.value
+  // The same rule that labels the button Submit or Update. The confirmation stays owed until every listed evaluation
+  // is saved, so a save that partly fails confirms on the retry that completes it, even when that retry is an Update.
+  if (isNewSubmission.value) confirmationOwed.value = true
 
-    // Send an submission confirmation email to the submitter
-    await sendPeerEvaluationSubmissionConfirmationEmail(previousWeekRange.value)
-    ElMessage.success('A confirmation email has been sent to you.')
-  }
-}
-
-// Update peer evaluations
-async function updatePeerEvaluations() {
-  if (peerEvalutions.value) {
-    const submitPromises = peerEvalutions.value.map(async (evaluation) => {
+  isLoading.value = true
+  const results = await Promise.allSettled(
+    evaluations.map(async (evaluation) => {
+      if (evaluation.evaluationId == null) {
+        const result: SubmitPeerEvaluationResponse = await submitEvaluation(evaluation)
+        return result.data
+      }
       const result: UpdatePeerEvaluationResponse = await updateEvaluation(evaluation)
       return result.data
     })
+  )
+  isLoading.value = false
 
-    isLoading.value = true
-    peerEvalutions.value = await Promise.all(submitPromises) // Wait for all promises to resolve
-    ElMessage.success('Peer evaluations updated successfully')
-    isLoading.value = false
+  // Keep each evaluation that saved as the server returned it, and each one that failed as the student left it, so a
+  // failure for one teammate loses nothing she typed.
+  peerEvalutions.value = evaluations.map((evaluation, i) => {
+    const result = results[i]
+    return result?.status === 'fulfilled' ? result.value : evaluation
+  })
+
+  const failedEvaluateeIds = new Set(
+    evaluations
+      .filter((_, i) => results[i]?.status === 'rejected')
+      .map((evaluation) => evaluation.evaluateeId)
+  )
+  if (failedEvaluateeIds.size > 0) {
+    // 9a (or any other failure): the shared request instance has shown the message. Re-read the team and drop an
+    // unsaved evaluation of anyone no longer an active teammate, since it can never be saved.
+    await loadStudents()
+    const activeTeammateIds = new Set(
+      students.value.filter((student) => student.enabled).map((student) => student.id as number)
+    )
+    peerEvalutions.value = peerEvalutions.value.filter(
+      (evaluation) => evaluation.evaluationId != null || activeTeammateIds.has(evaluation.evaluateeId)
+    )
+    // Any other failure leaves its evaluation listed and unsaved: stop here, and let the student retry
+    if (peerEvalutions.value.some((evaluation) => failedEvaluateeIds.has(evaluation.evaluateeId))) return
   }
+
+  if (!confirmationOwed.value) {
+    ElMessage.success('Peer evaluations updated successfully')
+    return
+  }
+  ElMessage.success('Peer evaluations submitted successfully')
+
+  // Send an submission confirmation email to the submitter
+  await sendPeerEvaluationSubmissionConfirmationEmail(previousWeekRange.value)
+  confirmationOwed.value = false
+  ElMessage.success('A confirmation email has been sent to you.')
 }
 </script>
 

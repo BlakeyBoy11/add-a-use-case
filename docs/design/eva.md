@@ -41,6 +41,7 @@ classDiagram
   - It lists a teammate when her account is active (`enabled` is already in the teammate `StudentDto` from `GET /students/teams/{teamId}`) or when the evaluator already has a saved evaluation of her for the week. A deactivated teammate with no saved evaluation is not listed.
   - Saving sends one request per listed teammate and waits for all of them to settle rather than stopping at the first failure: `PUT` for a teammate who already has a saved evaluation, `POST` for one who does not. Today the page sends `POST` for everyone or `PUT` for everyone, which after a partial save would leave the unsaved teammates unreachable.
   - If any request fails, it shows the failure and reloads its teammates and evaluations.
+  - Whether it offers Submit or Update, and shows the not-submitted reminder, is derived from the listed rows (any without a saved evaluation), because a reload after a partial save can change it.
 - No new class, controller, route, or exception: the rejection reuses `PeerEvaluationIllegalArgumentException` (`400` / `INVALID_ARGUMENT`).
 
 ## Sequence

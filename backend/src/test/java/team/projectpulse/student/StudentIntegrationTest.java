@@ -21,6 +21,7 @@ import org.springframework.util.MultiValueMap;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -35,6 +36,9 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     JsonMapper jsonMapper;
+
+    @Autowired
+    StudentRepository studentRepository;
 
     String adminToken;
 
@@ -250,6 +254,40 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.password").doesNotExist())
                 .andExpect(jsonPath("$.data.enabled").value(true)) // The enabled status should not be changed.
                 .andExpect(jsonPath("$.data.roles").value("student")); // The role should not be changed.
+    }
+
+    private String johnUpdatePayload(boolean enabled) throws Exception {
+        Map<String, Object> studentDto = new HashMap<>();
+        studentDto.put("username", "j.smith@abc.edu");
+        studentDto.put("firstName", "John");
+        studentDto.put("lastName", "Smith");
+        studentDto.put("email", "j.smith@abc.edu");
+        studentDto.put("enabled", enabled);
+        return this.jsonMapper.writeValueAsString(studentDto);
+    }
+
+    @Test
+    @DisplayName("The generic update cannot deactivate: an assigned instructor's enabled=false for an active student is ignored")
+    void testInstructorBillCannotDeactivateStudentThroughUpdate() throws Exception {
+        this.mockMvc.perform(put(this.baseUrl + "/students/4").contentType(MediaType.APPLICATION_JSON).content(johnUpdatePayload(false)).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.data.enabled").value(true));
+
+        assertThat(this.studentRepository.findById(4).orElseThrow().isEnabled()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Interim reactivate path: an assigned instructor's enabled=true for a deactivated student activates her")
+    void testInstructorBillReactivatesStudentThroughUpdate() throws Exception {
+        Student john = this.studentRepository.findById(4).orElseThrow();
+        john.setEnabled(false);
+        this.studentRepository.saveAndFlush(john);
+
+        this.mockMvc.perform(put(this.baseUrl + "/students/4").contentType(MediaType.APPLICATION_JSON).content(johnUpdatePayload(true)).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.data.enabled").value(true));
     }
 
     @Test

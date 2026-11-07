@@ -49,7 +49,8 @@ classDiagram
         <<changed>>
     }
     class UserRepository {
-        <<reused, user>>
+        <<changed, user>>
+        +existsByIdAndEnabledTrue(id) boolean
     }
     StudentController --> StudentService
     StudentService ..> StudentAlreadyDeactivatedException : throws
@@ -64,7 +65,7 @@ classDiagram
 Backend:
 - [`StudentController`](../../backend/src/main/java/team/projectpulse/student/StudentController.java), [`StudentService`](../../backend/src/main/java/team/projectpulse/student/StudentService.java), [`StudentSecurityService`](../../backend/src/main/java/team/projectpulse/student/StudentSecurityService.java): changed.
 - [`StudentInstructorAuthorizationManager`](../../backend/src/main/java/team/projectpulse/security/authorizationmanagers/StudentInstructorAuthorizationManager.java): reused. It passes when the caller's id is among `student.section.instructors`, so a student (whose id is never there) and an instructor of another course section fail, and an instructor assigned to several course sections passes for each. `StudentCourseAdminAuthorizationManager`: new, in the same package; it reads `studentId` and fails closed like its siblings.
-- `ActiveAccountJwtAuthenticationConverter`: new, in `security`. It wraps the existing `jwtAuthenticationConverter()` bean in [`SecurityConfiguration`](../../backend/src/main/java/team/projectpulse/security/SecurityConfiguration.java), keeps its authority mapping, and reads [`UserRepository`](../../backend/src/main/java/team/projectpulse/user/UserRepository.java). Both packages are in the foundation, so the dependency is allowed (`MNT-feature-locality`).
+- `ActiveAccountJwtAuthenticationConverter`: new, in `security`. It wraps the existing `jwtAuthenticationConverter()` bean in [`SecurityConfiguration`](../../backend/src/main/java/team/projectpulse/security/SecurityConfiguration.java), keeps its authority mapping, and reads [`UserRepository`](../../backend/src/main/java/team/projectpulse/user/UserRepository.java) through a new `existsByIdAndEnabledTrue`. Both packages are in the foundation, so the dependency is allowed (`MNT-feature-locality`).
 - `StudentAlreadyDeactivatedException`: new, in `system/exception`, mapped by `ExceptionHandlerAdvice` to `409` / `StatusCode.CONFLICT` (the code already exists; only the handler is new).
 
 Frontend:
@@ -135,8 +136,8 @@ sequenceDiagram
     SPA->>F: POST /api/v1/activities (Bearer JWT, not yet expired)
     F->>F: verify signature and expiry
     F->>AC: convert(jwt)
-    AC->>UR: findById(userId claim)
-    UR-->>AC: enabled = false, or no row
+    AC->>UR: existsByIdAndEnabledTrue(userId claim)
+    UR-->>AC: false (disabled, or no row)
     AC-->>F: DisabledException
     F-->>SPA: 401 "User account is abnormal." (entry point → ExceptionHandlerAdvice)
     SPA->>SPA: clear token and user stores; redirect to login
@@ -159,7 +160,7 @@ sequenceDiagram
 
 **The generic update keeps only false to true, as an interim reactivate path.** `StudentService.updateStudent` applies `enabled` only when an instructor turns it on, so deactivation goes only through the new route, with its warning and confirmation. The Edit dialog shows the switch only for a deactivated student. Recorded in UC-STU-reactivate-student's Associated Information, to be replaced when that use case is built. A `false` sent for an active student is ignored. Rejected: answering it with `400`, since the only client never sends it once the switch is hidden. Rejected: removing the `enabled` write altogether, which would leave reactivation with no UI until UC-STU-reactivate-student is built.
 
-**The active-account check is in the JWT converter, on every request.** `ActiveAccountJwtAuthenticationConverter` loads the user named by the `userId` claim and throws `DisabledException` when the account is disabled or missing. It covers every route, for students and instructors alike, which is what FR-SEC-active-account requires, and it also locks out a deleted account's token. The cost is one primary-key read per request. Rejected:
+**The active-account check is in the JWT converter, on every request.** `ActiveAccountJwtAuthenticationConverter` asks `UserRepository.existsByIdAndEnabledTrue` about the user named by the `userId` claim and throws `DisabledException` when the account is disabled or missing, or the claim is absent. It covers every route, for students and instructors alike, which is what FR-SEC-active-account requires, and it also locks out a deleted account's token. The cost is one primary-key read per request. The check is an existence query, not a `findById`, because loading the user would also load a student's mandatory, eagerly fetched course section on every request, and the check needs only the flag. Rejected:
 - an in-memory token blocklist: it is per-instance, and every place that disables an account would have to populate it;
 - checks inside the activity and evaluation services: they miss reads and every future route;
 - caching the flag: it reopens the staleness window the check exists to close;
@@ -201,7 +202,7 @@ No delta. `PeerEvaluationUser.enabled` already exists, and deactivation writes o
 | UC-STU-deactivate-student, login | integration | Logging in with her credentials after deactivation returns `401` |
 | UC-STU-deactivate-student, team kept | integration | After deactivation she still appears in `GET /students/teams/{teamId}` with `enabled: false`, and `GET /sections/{sectionId}/submission-status` does not list her as owing |
 | FR-SEC-active-account, instructor | integration | A deactivated instructor's unexpired token returns `401` |
-| FR-SEC-active-account, converter | unit | An enabled user yields an authentication carrying the token's authorities; a disabled user or a missing row throws `DisabledException` |
+| FR-SEC-active-account, converter | unit | An enabled user yields an authentication carrying the token's authorities; a token with no usable `userId` claim throws `DisabledException` without a lookup. That a disabled or missing account is refused is asserted only end to end (the open-session, instructor, and deleted-account rows), because a mocked repository makes the converter's own query the test's oracle |
 | Generic update cannot deactivate | integration | An assigned instructor's `PUT /students/{id}` with `enabled: false` for an active student returns `200`, and she stays active |
 | Interim reactivate path | integration | An assigned instructor's `PUT /students/{id}` with `enabled: true` for a deactivated student activates her; a student's own `PUT` still cannot change `enabled` (`testStudentJohnUpdatesOwnInfo`, kept) |
 

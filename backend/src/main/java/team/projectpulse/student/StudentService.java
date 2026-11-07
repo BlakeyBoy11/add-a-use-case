@@ -4,13 +4,12 @@ import team.projectpulse.section.Section;
 import team.projectpulse.section.SectionRepository;
 import team.projectpulse.system.UserUtils;
 import team.projectpulse.system.exception.ObjectNotFoundException;
+import team.projectpulse.system.exception.StudentAlreadyDeactivatedException;
 import team.projectpulse.user.userinvitation.UserInvitationService;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -114,15 +113,31 @@ public class StudentService {
         oldStudent.setLastName(update.getLastName());
         oldStudent.setEmail(update.getEmail());
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        // If the user is an admin, then the user can update all the fields
-        if (authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"))) {
-            oldStudent.setEnabled(update.isEnabled());
-//            oldStudent.setRoles(update.getRoles());
+        // Interim reactivate path (UC-STU-reactivate-student, Associated Information): an instructor may turn a
+        // deactivated student back on here. Deactivating goes only through deactivateStudent, with its warning and
+        // confirmation, so a false sent for an active student is ignored, as roles are.
+        if (this.userUtils.hasRole("ROLE_instructor") && !oldStudent.isEnabled() && update.isEnabled()) {
+            oldStudent.setEnabled(true);
         }
 
         return this.studentRepository.save(oldStudent);
+    }
+
+    /**
+     * UC-STU-deactivate-student: revokes the student's access while keeping her account, her team, and her submitted
+     * work (BR-student-lifecycle). Only the flag changes; FR-SEC-active-account then refuses her next request.
+     * Who may call this is decided by the route rule, before the service runs.
+     *
+     * @throws StudentAlreadyDeactivatedException if she is already deactivated (6a); nothing is changed
+     */
+    public Student deactivateStudent(Integer studentId) {
+        Student student = this.studentRepository.findById(studentId)
+                .orElseThrow(() -> new ObjectNotFoundException("student", studentId));
+        if (!student.isEnabled()) {
+            throw new StudentAlreadyDeactivatedException();
+        }
+        student.setEnabled(false);
+        return this.studentRepository.save(student);
     }
 
     public void deleteStudent(Integer studentId) {

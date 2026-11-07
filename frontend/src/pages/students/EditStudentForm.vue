@@ -13,7 +13,9 @@
     <el-form-item label="Username:" prop="username">
       <el-input v-model="studentBeingEdited.username"></el-input>
     </el-form-item>
-    <el-form-item label="Status:" prop="enabled">
+    <!-- Interim reactivate path (UC-STU-reactivate-student): shown only for a deactivated student. Deactivating goes
+         through the Deactivate action on the student's details page, with its warning (UC-STU-deactivate-student). -->
+    <el-form-item v-if="loadedAsDeactivated" label="Status:" prop="enabled" data-cy="student-status-switch">
       <el-switch
         v-model="studentBeingEdited.enabled"
         inline-prompt
@@ -63,6 +65,7 @@ const studentBeingEdited = ref<Student>({
 })
 
 const studentForm = ref<FormInstance>() // Form reference
+const loadedAsDeactivated = ref(false) // Whether the student was deactivated when the dialog opened
 
 // Validation rules
 const rules = {
@@ -94,6 +97,7 @@ async function loadStudent(studentId: number) {
   studentBeingEdited.value.id = result.data.id as number
   studentBeingEdited.value.username = result.data.username
   studentBeingEdited.value.enabled = result.data.enabled
+  loadedAsDeactivated.value = result.data.enabled === false
   studentBeingEdited.value.firstName = result.data.firstName
   studentBeingEdited.value.lastName = result.data.lastName
   studentBeingEdited.value.email = result.data.email
@@ -110,7 +114,10 @@ async function updateExistingStudent() {
   const updatedStudent: Student = {
     id: studentBeingEdited.value.id,
     username: studentBeingEdited.value.username,
-    enabled: studentBeingEdited.value.enabled,
+    // true only when the user turned the switch on for a student deactivated when the dialog opened (the interim
+    // reactivate path). Otherwise false, which the backend ignores for an active student, so a dialog left open
+    // while someone else deactivates the student cannot undo that.
+    enabled: loadedAsDeactivated.value && studentBeingEdited.value.enabled,
     firstName: studentBeingEdited.value.firstName,
     lastName: studentBeingEdited.value.lastName,
     email: studentBeingEdited.value.email
