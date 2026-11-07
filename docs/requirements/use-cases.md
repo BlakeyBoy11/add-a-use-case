@@ -2367,6 +2367,8 @@ An example of the generated report:
 
 The report shall show who did not turn in the peer evaluation for that week, meaning the students who owe it (BR-submission-owed).
 
+Deactivated students: a student whose account is deactivated (UC-STU-deactivate-student) is listed in a week's report only if she received at least one peer evaluation for that week. Her record for the weeks before she was deactivated stays in the report, and the weeks after it, in which BR-no-evaluation-of-inactive leaves her with no peer evaluations, do not list her with a grade of 0.
+
 Report generating algorithm: How to compute the peer evaluation grade for a student? Each student receives multiple peer evaluations from her teammates every week. First, obtain the peer evaluations received by a student for that week. For each peer evaluation, compute a total score by adding up the individual criterion scores. Then compute the average of the total scores across the peer evaluations. For example, John Doe receives two peer evaluations from Tim Smith and Lily Fisher, respectively. Tim Smith gives the following scores based on the rubric: 10, 9, 10, 9, 10, 10. So the total score given by Tim is 58. Lily Fisher gives the following scores based on the rubric: 5, 5, 10, 10, 10, 10. So the total score given by Tim is 50. The grade that John Doe receives that week is (58 + 50) / 2 = 54.
 
 Details of a peer evaluation: The instructor may choose to see more details of one student's peer evaluation. For example, this table below shows the scores given by each evaluator in the same team to John Doe.
