@@ -1529,6 +1529,7 @@ Details:
 
 **Associated Information:**
 - The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
+- Interim path, to be replaced when this use case is built: until then, an instructor reactivates a student by turning on the Status switch in the student's Edit dialog, which is shown only for a deactivated student. The generic student update (`PUT /students/{studentId}`) honors only the change from deactivated to active; deactivation goes only through UC-STU-deactivate-student, with its warning and confirmation. This interim path performs no confirmation step and sends no notification, so it realizes neither step 4 nor step 6.
 - Team membership: a reactivated student is still on the team she was on when she was deactivated. She owes again once she is reactivated, starting with the items due that week, and her teammates again owe her a peer evaluation (BR-submission-owed).
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-deactivate-student: Deactivate a student
